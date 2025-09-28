@@ -1,0 +1,67 @@
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const admin = require('firebase-admin');
+
+const serviceAccount = require('./serviceAccountKey.json');
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
+const db = admin.firestore();
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+const PORT = process.env.PORT || 4000;
+
+// Create a new room with unique ID
+app.post('/api/rooms', async (req, res) => {
+  try {
+    const roomId = generateRoomId();
+    await db.collection('rooms').doc(roomId).set({
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      youtubeUrl: '',
+      hostId: req.body.hostId || null,
+    });
+    res.json({ roomId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to create room' });
+  }
+});
+
+// Get room info
+app.get('/api/rooms/:roomId', async (req, res) => {
+  try {
+    const roomDoc = await db.collection('rooms').doc(req.params.roomId).get();
+    if (!roomDoc.exists) return res.status(404).json({ error: 'Room not found' });
+    res.json(roomDoc.data());
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to get room' });
+  }
+});
+
+// Update YouTube URL (host only)
+app.post('/api/rooms/:roomId/youtube', async (req, res) => {
+  try {
+    const { youtubeUrl } = req.body;
+    await db.collection('rooms').doc(req.params.roomId).update({ youtubeUrl });
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to update YouTube URL' });
+  }
+});
+
+// Utility: generate 6-char alphanumeric room ID
+function generateRoomId() {
+  return Math.random().toString(36).substring(2, 8).toUpperCase();
+}
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
